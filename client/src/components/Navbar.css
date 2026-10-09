@@ -1,0 +1,52 @@
+.custom-navbar {
+  background-color: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(10px);
+  color: white;
+  padding: 16px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.navbar-brand-custom {
+  font-size: 1.4rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: white;
+  text-decoration: none;
+  letter-spacing: 0.5px;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 25px;
+  align-items: center;
+}
+
+.nav-link-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 0;
+  transition: color 0.2s ease;
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.nav-link-btn:hover, .nav-link-btn.active {
+  color: white;
+  border-bottom: 2px solid white;
+}
+
+.navbar-welcome {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  font-weight: 500;
+}

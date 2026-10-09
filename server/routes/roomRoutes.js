@@ -1,0 +1,10 @@
+const router = require('express').Router();
+const { getAllRooms, createRoom, updateRoom, deleteRoom } = require('../controllers/roomController');
+const { verifyAdmin } = require('../middleware/auth');
+
+router.get('/', getAllRooms);
+router.post('/', verifyAdmin, createRoom);
+router.put('/:id', verifyAdmin, updateRoom);
+router.delete('/:id', verifyAdmin, deleteRoom);
+
+module.exports = router;

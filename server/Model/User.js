@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const nameRegex = /^[a-zA-Z\s'-]+$/;
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const countryCodeRegex = /^\+\d{1,4}$/;
 const phoneRegex = /^\d{7,15}$/;
 

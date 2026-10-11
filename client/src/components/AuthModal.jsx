@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import API from '../services/api';
 import { useToast } from '../context/ToastContext';
 
@@ -22,7 +22,7 @@ const COUNTRY_CODES = [
 ];
 
 const nameRegex = /^[a-zA-Z\s'-]+$/;
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 const HERO_IMAGES = [
   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQTkv9liNysUaIUcXrZViJvpFBlkA9TlCsH7IPmW6Lhd6lxs3knZgq2gKQ&s=10',
@@ -50,10 +50,10 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
   const [mode, setMode] = useState(defaultMode);
   const [bgSlide, setBgSlide] = useState(0);
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => localStorage.getItem('rememberedEmail') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(() => !!localStorage.getItem('rememberedEmail'));
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -66,6 +66,17 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
 
+  const firstNameRef = useRef(null);
+  const emailRef = useRef(null);
+
+  useEffect(() => {
+    if (mode === 'login') {
+      emailRef.current?.focus();
+    } else {
+      firstNameRef.current?.focus();
+    }
+  }, [mode]);
+
   React.useEffect(() => {
     const interval = setInterval(() => {
       setBgSlide((p) => (p + 1) % HERO_IMAGES.length);
@@ -73,41 +84,81 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
     return () => clearInterval(interval);
   }, []);
 
-  const clearErrors = () => setErrors({});
+  const nameError = (value) => {
+    if (!value.trim()) return 'Name is required';
+    if (value.trim().length < 2 || value.trim().length > 50) return 'Must be 2-50 characters';
+    if (!nameRegex.test(value)) return 'Letters, spaces, hyphens, apostrophes only';
+    return '';
+  };
+
+  const emailError = (value) => {
+    if (!value.trim()) return 'Email is required';
+    if (!emailRegex.test(value)) return 'Enter a valid email (e.g. name@gmail.com)';
+    return '';
+  };
+
+  const phoneError = (value) => {
+    if (!value.trim()) return 'Phone number is required';
+    if (!/^\d{7,15}$/.test(value)) return 'Enter 7-15 digits';
+    return '';
+  };
+
+  const passwordError = (value) => {
+    if (!value) return 'Password is required';
+    if (value.length < 6) return 'At least 6 characters';
+    return '';
+  };
+
+  const confirmError = (value, pwd) => {
+    if (!value) return 'Please confirm your password';
+    if (value !== pwd) return 'Passwords do not match';
+    return '';
+  };
+
+  const getPasswordStrength = (pwd) => {
+    if (!pwd) return { score: 0, label: '', color: 'transparent' };
+    let score = 0;
+    if (pwd.length >= 6) score++;
+    if (pwd.length >= 10) score++;
+    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+    if (/\d/.test(pwd)) score++;
+    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+    if (score <= 1) return { score: 1, label: 'Weak', color: '#ff6b6b' };
+    if (score <= 3) return { score: 3, label: 'Fair', color: '#f5d76e' };
+    return { score: 5, label: 'Strong', color: '#4ade80' };
+  };
+
+  const handleBlur = (field) => {
+    let msg = '';
+    if (field === 'firstName') msg = nameError(firstName);
+    else if (field === 'lastName') msg = nameError(lastName);
+    else if (field === 'email') msg = emailError(email);
+    else if (field === 'phone') msg = phoneError(phone);
+    else if (field === 'password') msg = passwordError(password);
+    else if (field === 'confirmPassword') msg = confirmError(confirmPassword, password);
+    setErrors((prev) => ({ ...prev, [field]: msg }));
+  };
 
   const validateLogin = () => {
     const e = {};
-    if (!email.trim()) e.email = 'Email is required';
-    else if (!emailRegex.test(email)) e.email = 'Please enter a valid email address';
+    e.email = emailError(email);
     if (!password) e.password = 'Password is required';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    const filtered = Object.fromEntries(Object.entries(e).filter(([, v]) => v));
+    setErrors(filtered);
+    return Object.keys(filtered).length === 0;
   };
 
   const validateRegister = () => {
     const e = {};
-    if (!firstName.trim()) e.firstName = 'First name is required';
-    else if (firstName.trim().length < 2 || firstName.trim().length > 50) e.firstName = 'First name must be 2-50 characters';
-    else if (!nameRegex.test(firstName)) e.firstName = 'Letters, spaces, hyphens, apostrophes only (no numbers)';
-
-    if (!lastName.trim()) e.lastName = 'Last name is required';
-    else if (lastName.trim().length < 2 || lastName.trim().length > 50) e.lastName = 'Last name must be 2-50 characters';
-    else if (!nameRegex.test(lastName)) e.lastName = 'Letters, spaces, hyphens, apostrophes only (no numbers)';
-
-    if (!email.trim()) e.email = 'Email is required';
-    else if (!emailRegex.test(email)) e.email = 'Please enter a valid email address';
-
-    if (!phone.trim()) e.phone = 'Phone number is required';
-    else if (!/^\d{7,15}$/.test(phone)) e.phone = 'Phone number must be 7-15 digits';
-
-    if (!password) e.password = 'Password is required';
-    else if (password.length < 6) e.password = 'Password must be at least 6 characters';
-
-    if (!confirmPassword) e.confirmPassword = 'Please confirm your password';
-    else if (password !== confirmPassword) e.confirmPassword = 'Passwords do not match';
-
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    e.firstName = nameError(firstName);
+    e.lastName = nameError(lastName);
+    e.email = emailError(email);
+    e.phone = phoneError(phone);
+    e.password = passwordError(password);
+    e.confirmPassword = confirmError(confirmPassword, password);
+    const filtered = Object.fromEntries(Object.entries(e).filter(([, v]) => v));
+    setErrors(filtered);
+    return Object.keys(filtered).length === 0;
   };
 
   const handleLogin = async (e) => {
@@ -118,6 +169,11 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
       const res = await API.post('/auth/login', { email: email.trim(), password });
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
+      if (remember) {
+        localStorage.setItem('rememberedEmail', email.trim().toLowerCase());
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
       showToast(`Welcome back, ${res.data.user.firstName}!`, 'success');
       onLoginSuccess(res.data.user);
     } catch (err) {
@@ -299,10 +355,12 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
             <form onSubmit={handleLogin} noValidate>
               <div className="luxury-field">
                 <input
+                  ref={emailRef}
                   type="email"
                   placeholder=" "
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => handleBlur('email')}
                   autoComplete="email"
                 />
                 <label>Email Address</label>
@@ -315,6 +373,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   placeholder=" "
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => handleBlur('password')}
                   autoComplete="current-password"
                 />
                 <label>Password</label>
@@ -373,10 +432,12 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                 <div className="col-6">
                   <div className="luxury-field">
                     <input
+                      ref={firstNameRef}
                       type="text"
                       placeholder=" "
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
+                      onBlur={() => handleBlur('firstName')}
                       autoComplete="given-name"
                     />
                     <label>First Name</label>
@@ -390,6 +451,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                       placeholder=" "
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
+                      onBlur={() => handleBlur('lastName')}
                       autoComplete="family-name"
                     />
                     <label>Last Name</label>
@@ -404,14 +466,16 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   placeholder=" "
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => handleBlur('email')}
                   autoComplete="email"
                 />
                 <label>Email Address</label>
               </div>
               {errors.email && <div className="luxury-error">{errors.email}</div>}
 
-              <div className="luxury-field">
-                <div className="d-flex" style={{ gap: '8px' }}>
+              <div className="luxury-phone-group">
+                <label className="luxury-phone-label">Phone Number</label>
+                <div className="luxury-phone-row">
                   <select
                     value={countryCode}
                     onChange={(e) => setCountryCode(e.target.value)}
@@ -423,15 +487,15 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   </select>
                   <input
                     type="tel"
-                    placeholder=" "
+                    placeholder="917 123 4567"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                    onBlur={() => handleBlur('phone')}
                     maxLength={15}
                     autoComplete="tel-national"
-                    style={{ flex: 1 }}
                   />
                 </div>
-                <label className="luxury-fixed-label">Phone Number</label>
+                <div className="luxury-phone-hint">Enter digits only (7-15 digits)</div>
               </div>
               {errors.phone && <div className="luxury-error">{errors.phone}</div>}
 
@@ -441,6 +505,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   placeholder=" "
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => handleBlur('password')}
                   autoComplete="new-password"
                 />
                 <label>Password</label>
@@ -456,6 +521,26 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                 </button>
               </div>
               {errors.password && <div className="luxury-error">{errors.password}</div>}
+              {password && (
+                <div className="luxury-strength">
+                  <div className="luxury-strength-bar">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <span
+                        key={i}
+                        className="luxury-strength-segment"
+                        style={{
+                          background: i <= getPasswordStrength(password).score
+                            ? getPasswordStrength(password).color
+                            : 'rgba(255,255,255,0.1)',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="luxury-strength-label" style={{ color: getPasswordStrength(password).color }}>
+                    {getPasswordStrength(password).label}
+                  </span>
+                </div>
+              )}
 
               <div className="luxury-field">
                 <input
@@ -463,6 +548,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   placeholder=" "
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  onBlur={() => handleBlur('confirmPassword')}
                   onCopy={(e) => e.preventDefault()}
                   onPaste={(e) => e.preventDefault()}
                   onCut={(e) => e.preventDefault()}
@@ -481,6 +567,9 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                 </button>
               </div>
               {errors.confirmPassword && <div className="luxury-error">{errors.confirmPassword}</div>}
+              {confirmPassword && password === confirmPassword && !errors.confirmPassword && (
+                <div className="luxury-match">✓ Passwords match</div>
+              )}
 
               <button
                 type="submit"

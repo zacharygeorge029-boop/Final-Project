@@ -125,6 +125,101 @@ body {
   padding-left: 4px;
 }
 
+/* Phone number group (label sits above, no overlap) */
+.luxury-phone-group {
+  margin-bottom: 1rem;
+}
+
+.luxury-phone-label {
+  display: block;
+  font-size: 0.68rem;
+  color: #d4af37;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding-left: 2px;
+}
+
+.luxury-phone-row {
+  display: flex;
+  gap: 8px;
+}
+
+.luxury-phone-row .luxury-select {
+  flex: 0 0 46%;
+  width: 46%;
+  padding: 13px 36px 13px 14px;
+}
+
+.luxury-phone-row input[type="tel"] {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 10px;
+  padding: 13px 14px;
+  color: #fff;
+  font-size: 0.95rem;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.luxury-phone-row input[type="tel"]::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.luxury-phone-row input[type="tel"]:focus {
+  outline: none;
+  border-color: #d4af37;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.luxury-phone-hint {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.72rem;
+  margin-top: 5px;
+  padding-left: 2px;
+}
+
+/* Password strength meter */
+.luxury-strength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -4px;
+  margin-bottom: 12px;
+  padding-left: 2px;
+}
+
+.luxury-strength-bar {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+
+.luxury-strength-segment {
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  transition: background 0.25s ease;
+}
+
+.luxury-strength-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  min-width: 42px;
+  text-align: right;
+}
+
+.luxury-match {
+  color: #4ade80;
+  font-size: 0.78rem;
+  margin-top: -6px;
+  margin-bottom: 10px;
+  padding-left: 4px;
+  font-weight: 500;
+}
+
 .luxury-select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23d4af37' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");

@@ -19,6 +19,25 @@
   color: white;
   text-decoration: none;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navbar-logo {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+}
+
+.navbar-brand-text {
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .navbar-brand-text {
+    display: none;
+  }
 }
 
 .navbar-links {

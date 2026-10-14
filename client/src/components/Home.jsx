@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import API from '../services/api';
 import { useToast } from '../context/ToastContext';
+import BackToTop from './BackToTop';
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 
@@ -56,6 +58,18 @@ export default function Home({ onNavigateRooms }) {
   }, [showToast]);
 
   useEffect(() => {
+    const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+    socket.on('room_inventory_updated', ({ roomId, availableQuantity }) => {
+      setFeaturedRooms((prev) =>
+        prev.map((r) => (r._id === roomId ? { ...r, availableQuantity } : r))
+      );
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
     }, 6000);
@@ -78,7 +92,15 @@ export default function Home({ onNavigateRooms }) {
       showToast('Check-out date must be after check-in date.', 'warning');
       return;
     }
-    onNavigateRooms({ checkIn, checkOut, guests });
+    navigateToRooms();
+  };
+
+  const navigateToRooms = () => {
+    const params = { checkIn, checkOut, guests };
+    try {
+      localStorage.setItem('capipisa_booking_search', JSON.stringify(params));
+    } catch (e) { /* ignore storage errors */ }
+    onNavigateRooms(params);
   };
 
   return (
@@ -135,7 +157,7 @@ export default function Home({ onNavigateRooms }) {
             </p>
             <button
               className="btn btn-lg px-5 py-3 fw-bold rounded-pill text-dark border-0 shadow-lg"
-              onClick={() => onNavigateRooms()}
+              onClick={navigateToRooms}
               style={{ background: 'linear-gradient(135deg, #d4af37, #f5d76e)' }}
             >
               Explore Suites & Book Now →
@@ -159,31 +181,43 @@ export default function Home({ onNavigateRooms }) {
             <div className="row g-3 align-items-end">
               <div className="col-md-3">
                 <label className="form-label text-muted small fw-bold text-uppercase mb-1">Check-In</label>
-                <input type="date" className="form-control" value={checkIn} min={today} onChange={(e) => handleCheckInChange(e.target.value)} />
+                <div className="position-relative">
+                  <span className="position-absolute" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#d4af37', fontSize: '1.1rem', pointerEvents: 'none' }}>📅</span>
+                  <input type="date" className="form-control" value={checkIn} min={today} onChange={(e) => handleCheckInChange(e.target.value)} style={{ paddingLeft: '38px' }} />
+                </div>
               </div>
               <div className="col-md-3">
                 <label className="form-label text-muted small fw-bold text-uppercase mb-1">Check-Out</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={checkOut}
-                  min={checkIn ? new Date(new Date(checkIn).getTime() + 86400000).toISOString().split('T')[0] : today}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                />
+                <div className="position-relative">
+                  <span className="position-absolute" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#d4af37', fontSize: '1.1rem', pointerEvents: 'none' }}>📅</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={checkOut}
+                    min={checkIn ? new Date(new Date(checkIn).getTime() + 86400000).toISOString().split('T')[0] : today}
+                    onChange={(e) => setCheckOut(e.target.value)}
+                    style={{ paddingLeft: '38px' }}
+                  />
+                </div>
               </div>
               <div className="col-md-2">
                 <label className="form-label text-muted small fw-bold text-uppercase mb-1">Guests</label>
-                <select className="form-select" value={guests} onChange={(e) => setGuests(e.target.value)}>
-                  {[1, 2, 3, 4, 5, 6].map((n) => (
-                    <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
-                  ))}
-                </select>
+                <div className="position-relative">
+                  <span className="position-absolute" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#d4af37', fontSize: '1rem', pointerEvents: 'none', zIndex: 2 }}>👤</span>
+                  <select className="form-select" value={guests} onChange={(e) => setGuests(e.target.value)} style={{ paddingLeft: '38px' }}>
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="col-md-4">
                 <button
                   className="btn w-100 py-3 fw-bold border-0 rounded-pill"
                   onClick={handleFindRooms}
-                  style={{ background: 'linear-gradient(135deg, #d4af37, #f5d76e)', color: '#1a1a1a', boxShadow: '0 8px 24px rgba(212,175,55,0.5)' }}
+                  style={{ background: 'linear-gradient(135deg, #d4af37, #f5d76e)', color: '#1a1a1a', boxShadow: '0 8px 24px rgba(212,175,55,0.5)', transition: 'all 0.3s ease' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 32px rgba(212,175,55,0.7)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 8px 24px rgba(212,175,55,0.5)'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
                   🔍 Find Available Rooms
                 </button>
@@ -215,7 +249,7 @@ export default function Home({ onNavigateRooms }) {
                     <li key={i} className="mb-2 text-muted">{h}</li>
                   ))}
                 </ul>
-                <button className="btn btn-dark w-100 py-2 fw-bold rounded-pill" onClick={() => onNavigateRooms()}>
+                <button className="btn btn-dark w-100 py-2 fw-bold rounded-pill" onClick={navigateToRooms}>
                   View Available Rooms →
                 </button>
               </div>
@@ -235,7 +269,11 @@ export default function Home({ onNavigateRooms }) {
             <p className="text-muted mt-2">Handpicked accommodations for the discerning traveler.</p>
           </div>
           <div className="row g-4">
-            {featuredRooms.map((room) => (
+            {featuredRooms.map((room) => {
+              const availableQty = room.availableQuantity ?? 5;
+              const isSoldOut = availableQty <= 0;
+              const isLowStock = availableQty > 0 && availableQty <= 2;
+              return (
               <div className="col-md-4" key={room._id}>
                 <div
                   className="card h-100 border-0 overflow-hidden"
@@ -266,6 +304,21 @@ export default function Home({ onNavigateRooms }) {
                       {formatCurrency(room.pricePerNight)}
                       <small className="ms-1" style={{ fontSize: '0.7rem' }}>/night</small>
                     </span>
+                    <span
+                      className="badge position-absolute bottom-0 end-0 m-3 px-3 py-2 fw-bold"
+                      style={{
+                        background: isSoldOut
+                          ? 'linear-gradient(135deg, #475569, #1e293b)'
+                          : isLowStock
+                          ? 'linear-gradient(135deg, #d4af37, #f5d76e)'
+                          : 'rgba(15,23,42,0.85)',
+                        color: isSoldOut ? '#f87171' : isLowStock ? '#0f172a' : '#f5d76e',
+                        borderRadius: '12px',
+                        fontSize: '0.78rem',
+                      }}
+                    >
+                      {isSoldOut ? 'Sold Out' : isLowStock ? `Only ${availableQty} left!` : `${availableQty} Available`}
+                    </span>
                   </div>
                   <div className="card-body p-4">
                     <h5 className="fw-bold mb-2" style={{ color: '#0f172a' }}>{room.type}</h5>
@@ -278,7 +331,7 @@ export default function Home({ onNavigateRooms }) {
                     <div className="mt-3">
                       <button
                         className="btn w-100 py-2 fw-bold rounded-pill border-0"
-                        onClick={() => onNavigateRooms()}
+                        onClick={navigateToRooms}
                         style={{ background: 'linear-gradient(135deg, #d4af37, #f5d76e)', color: '#1a1a1a' }}
                       >
                         View Suite →
@@ -287,7 +340,8 @@ export default function Home({ onNavigateRooms }) {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -406,6 +460,8 @@ export default function Home({ onNavigateRooms }) {
           </div>
         </div>
       </div>
+
+      <BackToTop />
     </div>
   );
 }

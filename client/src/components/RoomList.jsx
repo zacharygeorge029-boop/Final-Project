@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { io } from 'socket.io-client';
 import API from '../services/api';
 import { useToast } from '../context/ToastContext';
+import BackToTop from './BackToTop';
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 
@@ -59,9 +61,16 @@ const HERO_IMAGES = [
 ];
 
 const PAYMENT_METHODS = [
-  { id: 'arrival', label: 'Pay Upon Arrival', icon: '🏨' },
+  { id: 'cash', label: 'Pay Upon Arrival', icon: '🏨' },
   { id: 'card', label: 'Credit Card', icon: '💳' },
-  { id: 'gcash', label: 'GCash', icon: '📱' },
+  { id: 'ewallet', label: 'GCash / E-Wallet', icon: '📱' },
+];
+
+const STAY_ADDONS = [
+  { id: 'airport', name: 'Airport Transfer', price: 2500, icon: '🚐', perNight: false, desc: 'Private round-trip airport transfer' },
+  { id: 'champagne', name: 'Welcome Champagne & Fruit Basket', price: 1800, icon: '🍾', perNight: false, desc: 'Premium champagne & seasonal fruit' },
+  { id: 'spa', name: 'Sunset Spa Package', price: 3500, icon: '💆', perNight: false, desc: 'Signature 90-min couples spa session' },
+  { id: 'breakfast', name: 'Daily Beachfront Breakfast', price: 1200, icon: '🍳', perNight: true, desc: 'Gourmet breakfast each morning' },
 ];
 
 const GOLD_GRADIENT = 'linear-gradient(135deg, #d4af37 0%, #f5d76e 100%)';
@@ -90,6 +99,9 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
   });
   const [paymentMethod, setPaymentMethod] = useState('arrival');
   const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [filtering, setFiltering] = useState(false);
+  const [selectedAddons, setSelectedAddons] = useState([]);
+  const [confirmedBooking, setConfirmedBooking] = useState(null);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -100,6 +112,18 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
   }, [showToast]);
 
   useEffect(() => {
+    const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+    socket.on('room_inventory_updated', ({ roomId, availableQuantity }) => {
+      setRooms((prev) =>
+        prev.map((r) => (r._id === roomId ? { ...r, availableQuantity } : r))
+      );
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % HERO_IMAGES.length);
     }, 4500);
@@ -107,10 +131,17 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
   }, []);
 
   useEffect(() => {
-    if (bookingParams) {
-      if (bookingParams.checkIn) setCheckIn(bookingParams.checkIn);
-      if (bookingParams.checkOut) setCheckOut(bookingParams.checkOut);
-      if (bookingParams.guests) setGuestCount(String(bookingParams.guests));
+    let source = bookingParams;
+    if (!source) {
+      try {
+        const saved = localStorage.getItem('capipisa_booking_search');
+        if (saved) source = JSON.parse(saved);
+      } catch (e) { /* ignore */ }
+    }
+    if (source) {
+      if (source.checkIn) setCheckIn(source.checkIn);
+      if (source.checkOut) setCheckOut(source.checkOut);
+      if (source.guests) setGuestCount(String(source.guests));
     }
   }, [bookingParams]);
 
@@ -121,6 +152,20 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
     const diff = (new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24);
     return Math.max(0, Math.ceil(diff));
   }, [checkIn, checkOut]);
+
+  const addonObjects = useMemo(
+    () => STAY_ADDONS.filter((a) => selectedAddons.includes(a.id)),
+    [selectedAddons]
+  );
+
+  const addonsTotal = useMemo(
+    () => addonObjects.reduce((sum, a) => sum + (a.perNight ? a.price * nights : a.price), 0),
+    [addonObjects, nights]
+  );
+
+  const toggleAddon = (id) => {
+    setSelectedAddons((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   const handleCheckInChange = (value) => {
     setCheckIn(value);
@@ -138,8 +183,24 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
       showToast('Check-out date must be after check-in date.', 'warning');
       return;
     }
+    try {
+      localStorage.setItem('capipisa_booking_search', JSON.stringify({ checkIn, checkOut, guests: guestCount }));
+    } catch (e) { /* ignore */ }
+    setFiltering(true);
     setFiltersApplied(true);
-    showToast('Filters applied! Browse your available rooms below.', 'success');
+    setTimeout(() => {
+      setFiltering(false);
+      showToast('Filters applied! Browse your available rooms below.', 'success');
+    }, 450);
+  };
+
+  const resetFilters = () => {
+    setCheckIn('');
+    setCheckOut('');
+    setGuestCount('2');
+    setCategory('All Rooms');
+    setFiltersApplied(false);
+    showToast('Filters reset. Showing all available rooms.', 'success');
   };
 
   const filteredRooms = rooms.filter((room) => {
@@ -174,7 +235,8 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
       phone: '',
       specialRequests: '',
     });
-    setPaymentMethod('arrival');
+    setPaymentMethod('cash');
+    setSelectedAddons([]);
     setBookingRoom(room);
   };
 
@@ -184,24 +246,117 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
       showToast('Please provide your name and email to complete the booking.', 'warning');
       return;
     }
-    const totalAmount = nights * bookingRoom.pricePerNight;
+    const roomTotal = nights * bookingRoom.pricePerNight;
+    const totalAmount = roomTotal + addonsTotal;
     try {
       setSubmittingBooking(true);
-      await API.post('/reservations', {
+      const payload = {
         room: bookingRoom._id,
         checkInDate: checkIn,
         checkOutDate: checkOut,
         totalAmount,
-      });
+        roomTotal,
+        addonsTotal,
+        addons: addonObjects.map((a) => ({ id: a.id, name: a.name, price: a.price, perNight: a.perNight })),
+        guestDetails: {
+          firstName: guestForm.firstName.trim(),
+          lastName: guestForm.lastName.trim(),
+          email: guestForm.email.trim(),
+          phone: guestForm.phone.trim(),
+          specialRequests: guestForm.specialRequests.trim(),
+        },
+        paymentMethod,
+      };
+      const res = await API.post('/reservations', payload);
       showToast('Reservation confirmed! We look forward to welcoming you.', 'success');
       setBookingRoom(null);
-      setMessage('Reservation confirmed. Check your bookings page for details.');
-      setTimeout(() => setMessage(''), 5000);
+      setConfirmedBooking({
+        ...res.data,
+        room: bookingRoom,
+        nights,
+        roomTotal,
+        addonsTotal,
+        addons: addonObjects,
+      });
     } catch (err) {
       showToast(err.response?.data?.message || 'Booking failed. Please try again.', 'error');
     } finally {
       setSubmittingBooking(false);
     }
+  };
+
+  const handleDownloadVoucher = () => {
+    if (!confirmedBooking) return;
+    const b = confirmedBooking;
+    const roomName = b.room?.type || 'Capipisa Bay Suite';
+    const addonLines = (b.addons || []).map((a) =>
+      `<tr><td style="padding:8px 0;color:#475569">${a.icon} ${a.name}${a.perNight ? ` × ${b.nights}` : ''}</td><td style="padding:8px 0;text-align:right;color:#0f172a">${formatCurrency(a.perNight ? a.price * b.nights : a.price)}</td></tr>`
+    ).join('');
+    const guest = b.guestDetails || {};
+    const fullName = `${guest.firstName || ''} ${guest.lastName || ''}`.trim();
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>E-Voucher ${b.bookingReference || ''}</title>
+<style>
+body{font-family:Georgia,'Times New Roman',serif;background:#f8fafc;margin:0;padding:40px;color:#0f172a}
+.voucher{max-width:640px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 20px 60px rgba(15,23,42,0.15);border:1px solid rgba(212,175,55,0.3)}
+.header{background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:32px;text-align:center}
+.header h1{color:#f5d76e;margin:0 0 6px;font-size:1.6rem;letter-spacing:1px}
+.header .ref{color:rgba(255,255,255,0.8);font-size:0.95rem}
+.body{padding:32px}
+.badge{display:inline-block;background:linear-gradient(135deg,#d4af37,#f5d76e);color:#0f172a;padding:6px 16px;border-radius:20px;font-weight:bold;font-size:0.8rem;letter-spacing:1px;text-transform:uppercase}
+h2{color:#0f172a;margin:24px 0 8px;font-size:1.2rem;border-bottom:2px solid rgba(212,175,55,0.3);padding-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:0.95rem}
+.label{color:#64748b}
+.val{color:#0f172a;font-weight:600}
+.total-row{border-top:2px dashed #d4af37}
+.footer{background:#f8fafc;padding:24px 32px;text-align:center;color:#64748b;font-size:0.85rem;border-top:1px solid #e2e8f0}
+.gold{color:#d4af37}
+</style></head><body>
+<div class="voucher">
+<div class="header">
+<h1>✦ CAPIPISA BAY RESORT & HOTEL ✦</h1>
+<div class="ref">Booking Confirmation · ${b.bookingReference || 'N/A'}</div>
+</div>
+<div class="body">
+<center><span class="badge">Reservation Confirmed</span></center>
+<h2>Guest</h2>
+<table>
+<tr><td class="label">Name</td><td class="val">${fullName || '—'}</td></tr>
+<tr><td class="label">Email</td><td class="val">${guest.email || '—'}</td></tr>
+<tr><td class="label">Phone</td><td class="val">${guest.phone || '—'}</td></tr>
+</table>
+<h2>Stay Details</h2>
+<table>
+<tr><td class="label">Suite</td><td class="val">${roomName}</td></tr>
+<tr><td class="label">Check-In</td><td class="val">${b.checkInDate ? new Date(b.checkInDate).toLocaleDateString() : '—'}</td></tr>
+<tr><td class="label">Check-Out</td><td class="val">${b.checkOutDate ? new Date(b.checkOutDate).toLocaleDateString() : '—'}</td></tr>
+<tr><td class="label">Nights</td><td class="val">${b.nights || 0}</td></tr>
+</table>
+<h2>Charges</h2>
+<table>
+<tr><td style="padding:8px 0;color:#475569">Suite (${formatCurrency(b.room?.pricePerNight || 0)} × ${b.nights || 0})</td><td style="padding:8px 0;text-align:right;color:#0f172a">${formatCurrency(b.roomTotal || 0)}</td></tr>
+${addonLines}
+<tr class="total-row"><td style="padding:10px 0;font-weight:bold;color:#0f172a">Total Amount</td><td style="padding:10px 0;text-align:right;font-weight:bold;color:#d4af37;font-size:1.1rem">${formatCurrency(b.totalAmount || 0)}</td></tr>
+</table>
+</div>
+<div class="footer">
+Thank you for choosing Capipisa Bay Resort & Hotel.<br>
+A confirmation has been sent to your email. Present this voucher upon arrival.
+</div>
+</div>
+</body></html>`;
+
+    const printWindow = window.open('', '_blank', 'width=820,height=900');
+    if (!printWindow) {
+      showToast('Please allow pop-ups to download your e-voucher.', 'warning');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
   };
 
   const renderBadge = (badge) => {
@@ -301,35 +456,47 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
             <div className="row g-3 align-items-end">
               <div className="col-md-3">
                 <label className="form-label text-muted small fw-bold text-uppercase">Check-In</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={checkIn}
-                  min={today}
-                  onChange={(e) => handleCheckInChange(e.target.value)}
-                />
+                <div className="position-relative">
+                  <span className="position-absolute" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: GOLD, fontSize: '1.1rem', pointerEvents: 'none' }}>📅</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={checkIn}
+                    min={today}
+                    onChange={(e) => handleCheckInChange(e.target.value)}
+                    style={{ paddingLeft: '38px' }}
+                  />
+                </div>
               </div>
               <div className="col-md-3">
                 <label className="form-label text-muted small fw-bold text-uppercase">Check-Out</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={checkOut}
-                  min={checkIn ? new Date(new Date(checkIn).getTime() + 86400000).toISOString().split('T')[0] : today}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                />
+                <div className="position-relative">
+                  <span className="position-absolute" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: GOLD, fontSize: '1.1rem', pointerEvents: 'none' }}>📅</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={checkOut}
+                    min={checkIn ? new Date(new Date(checkIn).getTime() + 86400000).toISOString().split('T')[0] : today}
+                    onChange={(e) => setCheckOut(e.target.value)}
+                    style={{ paddingLeft: '38px' }}
+                  />
+                </div>
               </div>
               <div className="col-md-2">
                 <label className="form-label text-muted small fw-bold text-uppercase">Guests</label>
-                <select
-                  className="form-select"
-                  value={guestCount}
-                  onChange={(e) => setGuestCount(e.target.value)}
-                >
-                  {[1, 2, 3, 4, 5, 6].map((n) => (
-                    <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
-                  ))}
-                </select>
+                <div className="position-relative">
+                  <span className="position-absolute" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: GOLD, fontSize: '1rem', pointerEvents: 'none', zIndex: 2 }}>👤</span>
+                  <select
+                    className="form-select"
+                    value={guestCount}
+                    onChange={(e) => setGuestCount(e.target.value)}
+                    style={{ paddingLeft: '38px' }}
+                  >
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="col-md-2">
                 <label className="form-label text-muted small fw-bold text-uppercase">Category</label>
@@ -347,6 +514,7 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
                 <button
                   className="btn w-100 py-2 fw-bold"
                   onClick={handleApply}
+                  disabled={filtering}
                   style={{
                     background: GOLD_GRADIENT,
                     color: NAVY,
@@ -356,15 +524,24 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
                     transition: 'all 0.3s ease',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 6px 22px rgba(212,175,55,0.7)';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    if (!filtering) {
+                      e.currentTarget.style.boxShadow = '0 6px 22px rgba(212,175,55,0.7)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.boxShadow = '0 4px 14px rgba(212,175,55,0.4)';
                     e.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
-                  Apply
+                  {filtering ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                      Searching...
+                    </>
+                  ) : (
+                    'Apply'
+                  )}
                 </button>
               </div>
             </div>
@@ -401,15 +578,29 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
             style={{ background: 'rgba(255,255,255,0.6)', borderRadius: '16px' }}
           >
             <div className="display-4 mb-3">🛏️</div>
-            <h4 className="fw-bold text-dark">No rooms match your search</h4>
-            <p className="text-muted mb-0">
-              Try adjusting your dates, guest count, or room category to see available options.
+            <h4 className="fw-bold text-dark">No suites available for your selected dates</h4>
+            <p className="text-muted mb-4">
+              Try adjusting your dates or viewing all suites.
             </p>
+            <button
+              className="btn fw-bold rounded-pill px-4 py-2"
+              onClick={resetFilters}
+              style={{
+                background: 'linear-gradient(135deg, #d4af37 0%, #f5d76e 100%)',
+                color: NAVY,
+                border: 'none',
+              }}
+            >
+              Reset Search Filters
+            </button>
           </div>
         ) : (
           <div className="row">
             {filteredRooms.map((room) => {
               const totalForStay = nights * room.pricePerNight;
+              const availableQty = room.availableQuantity ?? 5;
+              const isSoldOut = availableQty <= 0;
+              const isLowStock = availableQty > 0 && availableQty <= 2;
               return (
                 <div className="col-md-4 mb-4" key={room._id}>
                   <div
@@ -463,6 +654,27 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
                       >
                         Up to {room.capacity} guests
                       </span>
+                      <span
+                        className="badge position-absolute bottom-0 end-0 m-3 px-3 py-2 fw-bold"
+                        style={{
+                          background: isSoldOut
+                            ? 'linear-gradient(135deg, #475569, #1e293b)'
+                            : isLowStock
+                            ? GOLD_GRADIENT
+                            : 'rgba(15,23,42,0.85)',
+                          color: isSoldOut ? '#f87171' : isLowStock ? NAVY : '#f5d76e',
+                          borderRadius: '12px',
+                          fontSize: '0.78rem',
+                          letterSpacing: '0.3px',
+                          boxShadow: isLowStock ? '0 4px 12px rgba(212,175,55,0.45)' : 'none',
+                        }}
+                      >
+                        {isSoldOut
+                          ? 'Sold Out'
+                          : isLowStock
+                          ? `Only ${availableQty} left!`
+                          : `${availableQty} Available`}
+                      </span>
                     </div>
                     <div className="card-body p-4 d-flex flex-column">
                       <h5 className="card-title fw-bold mb-2" style={{ color: NAVY }}>{room.type}</h5>
@@ -512,14 +724,17 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
                         </button>
                         <button
                           className="btn flex-grow-1 py-2 fw-bold rounded-pill"
+                          disabled={isSoldOut}
                           style={{
-                            background: GOLD_GRADIENT,
-                            color: NAVY,
+                            background: isSoldOut ? 'rgba(100,116,139,0.4)' : GOLD_GRADIENT,
+                            color: isSoldOut ? '#e2e8f0' : NAVY,
                             border: 'none',
+                            cursor: isSoldOut ? 'not-allowed' : 'pointer',
+                            opacity: isSoldOut ? 0.7 : 1,
                           }}
                           onClick={() => openBookingDrawer(room)}
                         >
-                          {user ? 'Book Now' : 'Sign In to Book'}
+                          {isSoldOut ? 'Sold Out' : user ? 'Book Now' : 'Sign In to Book'}
                         </button>
                       </div>
                     </div>
@@ -786,12 +1001,71 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
                   <span className="text-muted">{formatCurrency(bookingRoom.pricePerNight)} × {nights} {nights === 1 ? 'night' : 'nights'}</span>
                   <span style={{ color: NAVY }}>{formatCurrency(bookingRoom.pricePerNight * nights)}</span>
                 </div>
-                <div className="d-flex justify-content-between">
+                {addonObjects.map((a) => (
+                  <div key={a.id} className="d-flex justify-content-between mb-1 small">
+                    <span className="text-muted">{a.icon} {a.name}{a.perNight ? ` × ${nights}` : ''}</span>
+                    <span style={{ color: NAVY }}>{formatCurrency(a.perNight ? a.price * nights : a.price)}</span>
+                  </div>
+                ))}
+                <div className="d-flex justify-content-between pt-2" style={{ borderTop: '1px dashed rgba(212,175,55,0.4)' }}>
                   <span className="fw-bold" style={{ color: NAVY }}>Total</span>
                   <span className="fw-bold" style={{ color: GOLD, fontSize: '1.2rem' }}>
-                    {formatCurrency(bookingRoom.pricePerNight * nights)}
+                    {formatCurrency(bookingRoom.pricePerNight * nights + addonsTotal)}
                   </span>
                 </div>
+              </div>
+
+              <h6 className="fw-bold mb-3" style={{ color: NAVY }}>
+                <span style={{ color: GOLD }}>✦</span> Enhance Your Stay
+              </h6>
+              <div className="d-grid gap-2 mb-4">
+                {STAY_ADDONS.map((a) => {
+                  const active = selectedAddons.includes(a.id);
+                  const lineTotal = a.perNight ? a.price * nights : a.price;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className="d-flex align-items-center gap-3 text-start p-3"
+                      style={{
+                        border: active ? `2px solid ${GOLD}` : '2px solid #e2e8f0',
+                        background: active ? 'rgba(212,175,55,0.08)' : '#fff',
+                        borderRadius: '12px',
+                        color: NAVY,
+                        cursor: 'pointer',
+                        transition: 'all 0.25s ease',
+                      }}
+                      onClick={() => toggleAddon(a.id)}
+                    >
+                      <span style={{ fontSize: '1.5rem' }}>{a.icon}</span>
+                      <span className="flex-grow-1">
+                        <span className="fw-bold d-block">{a.name}</span>
+                        <small className="text-muted">{a.desc}</small>
+                      </span>
+                      <span className="text-end">
+                        <span className="fw-bold d-block" style={{ color: GOLD }}>{formatCurrency(a.price)}</span>
+                        <small className="text-muted">{a.perNight ? `/ night` : 'one-time'}</small>
+                      </span>
+                      <span
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '6px',
+                          border: `2px solid ${active ? GOLD : '#cbd5e1'}`,
+                          background: active ? GOLD : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: NAVY,
+                          fontSize: '0.75rem',
+                          fontWeight: 900,
+                        }}
+                      >
+                        {active ? '✓' : ''}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               <h6 className="fw-bold mb-3" style={{ color: NAVY }}>Guest Information</h6>
@@ -887,7 +1161,7 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
                     Confirming...
                   </>
                 ) : (
-                  `Confirm Booking · ${formatCurrency(bookingRoom.pricePerNight * nights)}`
+                  `Confirm Booking · ${formatCurrency(bookingRoom.pricePerNight * nights + addonsTotal)}`
                 )}
               </button>
               <p className="text-center text-muted small mt-3 mb-0">
@@ -897,6 +1171,113 @@ export default function RoomList({ user, onNavigateLogin, bookingParams }) {
           </div>
         </div>
       )}
+
+      {confirmedBooking && (() => {
+        const b = confirmedBooking;
+        const roomName = b.room?.type || 'Capipisa Bay Suite';
+        const guest = b.guestDetails || {};
+        const fullName = `${guest.firstName || ''} ${guest.lastName || ''}`.trim();
+        return (
+          <div
+            onClick={() => setConfirmedBooking(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 2200,
+              background: 'rgba(15,23,42,0.7)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="animate-slide-up"
+              style={{
+                background: '#fff',
+                borderRadius: '20px',
+                maxWidth: '460px',
+                width: '100%',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+                boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
+                border: '1px solid rgba(212,175,55,0.3)',
+              }}
+            >
+              <div style={{ background: 'linear-gradient(135deg, #0f172a, #1e3a5f)', padding: '28px 24px', textAlign: 'center' }}>
+                <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: GOLD_GRADIENT, margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', boxShadow: '0 0 30px rgba(212,175,55,0.6)' }}>✓</div>
+                <h4 className="fw-bold mb-1" style={{ color: '#f5d76e' }}>Reservation Confirmed!</h4>
+                <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.9rem' }}>
+                  Ref: <span className="fw-bold" style={{ color: '#f5d76e', letterSpacing: '1px' }}>#{b.bookingReference || 'CAP-XXXX'}</span>
+                </div>
+              </div>
+
+              <div style={{ padding: '24px' }}>
+                <div className="mb-3">
+                  <small className="text-uppercase fw-bold" style={{ color: GOLD, letterSpacing: '1px' }}>Suite</small>
+                  <div className="fw-bold" style={{ color: NAVY }}>{roomName}</div>
+                </div>
+
+                <div className="row mb-3">
+                  <div className="col-6">
+                    <small className="text-uppercase fw-bold text-muted">Check-In</small>
+                    <div className="fw-bold" style={{ color: NAVY }}>{b.checkInDate ? new Date(b.checkInDate).toLocaleDateString() : '—'}</div>
+                  </div>
+                  <div className="col-6">
+                    <small className="text-uppercase fw-bold text-muted">Check-Out</small>
+                    <div className="fw-bold" style={{ color: NAVY }}>{b.checkOutDate ? new Date(b.checkOutDate).toLocaleDateString() : '—'}</div>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <small className="text-uppercase fw-bold text-muted">Guest</small>
+                  <div className="fw-bold" style={{ color: NAVY }}>{fullName || '—'}</div>
+                  <small className="text-muted">{guest.email || ''}</small>
+                </div>
+
+                {(b.addons && b.addons.length > 0) && (
+                  <div className="mb-3">
+                    <small className="text-uppercase fw-bold text-muted">Enhancements</small>
+                    {b.addons.map((a) => (
+                      <div key={a.id} className="d-flex justify-content-between" style={{ color: NAVY }}>
+                        <span>{a.icon} {a.name}</span>
+                        <span className="fw-bold">{formatCurrency(a.perNight ? a.price * b.nights : a.price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="d-flex justify-content-between align-items-center p-3 rounded" style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.2)' }}>
+                  <span className="fw-bold" style={{ color: NAVY }}>Total Amount</span>
+                  <span className="fw-bold" style={{ color: GOLD, fontSize: '1.3rem' }}>{formatCurrency(b.totalAmount || 0)}</span>
+                </div>
+
+                <button
+                  className="btn w-100 py-3 fw-bold rounded-pill mt-4"
+                  style={{ background: GOLD_GRADIENT, color: NAVY, border: 'none' }}
+                  onClick={handleDownloadVoucher}
+                >
+                  📥 Download E-Voucher
+                </button>
+                <button
+                  className="btn w-100 py-2 mt-2 rounded-pill"
+                  style={{ background: 'transparent', color: NAVY, border: '1px solid #e2e8f0' }}
+                  onClick={() => setConfirmedBooking(null)}
+                >
+                  Done
+                </button>
+                <p className="text-center text-muted small mt-3 mb-0">
+                  A confirmation has been sent to your email.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      <BackToTop />
     </div>
   );
 }

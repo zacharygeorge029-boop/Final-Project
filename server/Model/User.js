@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
 const nameRegex = /^[a-zA-Z\s'-]+$/;
-const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const countryCodeRegex = /^\+\d{1,4}$/;
-const phoneRegex = /^\d{7,15}$/;
+const phoneRegex = /^\d{10,11}$/;
 
 const UserSchema = new mongoose.Schema({
   firstName: {
@@ -39,7 +39,7 @@ const UserSchema = new mongoose.Schema({
     number: {
       type: String,
       required: [true, 'Phone number is required'],
-      match: [phoneRegex, 'Phone number must be 7-15 digits'],
+      match: [phoneRegex, 'Phone number must be 10-11 digits'],
     },
   },
   password: {
@@ -52,6 +52,8 @@ const UserSchema = new mongoose.Schema({
     enum: { values: ['guest', 'admin'], message: 'Role must be either guest or admin' },
     default: 'guest',
   },
+  isActive: { type: Boolean, default: true },
+  avatar: { type: String, default: '' },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);

@@ -16,6 +16,7 @@ export default function UserBookings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cancellingId, setCancellingId] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const { showToast } = useToast();
 
   const fetchBookings = async () => {
@@ -35,21 +36,30 @@ export default function UserBookings() {
     fetchBookings();
   }, []);
 
-  const handleCancel = async (reservationId) => {
-    const confirmed = window.confirm(
-      'Are you sure you want to cancel this reservation? This action cannot be undone.'
-    );
-    if (!confirmed) return;
+  const handleCancel = (booking) => {
+    setCancelTarget(booking);
+  };
 
+  const confirmCancel = async () => {
+    if (!cancelTarget) return;
+    const reservationId = cancelTarget._id;
+    const refundEligible = isEligibleForRefund(cancelTarget);
     try {
       setCancellingId(reservationId);
-      await API.put(`/reservations/${reservationId}/cancel`);
+      const res = await API.put(`/reservations/${reservationId}/cancel`);
       setBookings((prev) =>
         prev.map((b) =>
-          b._id === reservationId ? { ...b, status: 'Cancelled' } : b
+          b._id === reservationId
+            ? {
+                ...b,
+                status: 'Cancelled',
+                paymentStatus: refundEligible ? 'refund_requested' : b.paymentStatus,
+              }
+            : b
         )
       );
-      showToast('Reservation cancelled successfully.', 'success');
+      showToast(res.data?.message || 'Reservation cancelled successfully.', 'success');
+      setCancelTarget(null);
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to cancel reservation.', 'error');
     } finally {
@@ -68,6 +78,69 @@ export default function UserBookings() {
         {status}
       </span>
     );
+  };
+
+  const getPaymentBadge = (booking) => {
+    const method = booking.paymentMethod;
+    const labelMap = {
+      card: 'Paid via Card',
+      ewallet: 'Paid via E-Wallet',
+      cash: 'Pay Upon Arrival',
+      arrival: 'Pay Upon Arrival',
+      gcash: 'Paid via E-Wallet',
+    };
+    const label = labelMap[method] || method || 'N/A';
+    const isOnline = method === 'card' || method === 'ewallet' || method === 'gcash';
+    return (
+      <span
+        className="badge rounded-pill px-3 py-2 fw-bold"
+        style={{
+          background: isOnline ? 'rgba(212,175,55,0.15)' : 'rgba(148,163,184,0.15)',
+          color: isOnline ? '#d4af37' : '#64748b',
+          border: `1px solid ${isOnline ? 'rgba(212,175,55,0.4)' : 'rgba(148,163,184,0.4)'}`,
+        }}
+      >
+        {label}
+      </span>
+    );
+  };
+
+  const getRefundBadge = (booking) => {
+    const status = booking.paymentStatus;
+    if (status === 'refund_requested') {
+      return (
+        <span
+          className="badge rounded-pill px-3 py-2 fw-bold"
+          style={{
+            background: 'rgba(251,191,36,0.15)',
+            color: '#d97706',
+            border: '1px solid rgba(251,191,36,0.4)',
+          }}
+        >
+          Refund Requested
+        </span>
+      );
+    }
+    if (status === 'refunded') {
+      return (
+        <span
+          className="badge rounded-pill px-3 py-2 fw-bold"
+          style={{
+            background: 'rgba(34,197,94,0.15)',
+            color: '#16a34a',
+            border: '1px solid rgba(34,197,94,0.4)',
+          }}
+        >
+          Refunded
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const isEligibleForRefund = (booking) => {
+    const method = booking.paymentMethod;
+    return method === 'card' || method === 'ewallet' || method === 'gcash';
   };
 
   return (
@@ -148,6 +221,11 @@ export default function UserBookings() {
                             Room #{booking.room.roomNumber}
                           </span>
                         )}
+                        {booking.bookingReference && (
+                          <div className="small mt-1" style={{ color: '#f5d76e', letterSpacing: '0.5px' }}>
+                            Ref: #{booking.bookingReference}
+                          </div>
+                        )}
                       </div>
                       {getStatusBadge(booking.status)}
                     </div>
@@ -183,10 +261,15 @@ export default function UserBookings() {
                       </span>
                     </div>
 
+                    <div className="d-flex flex-wrap gap-2 mb-3">
+                      {getPaymentBadge(booking)}
+                      {getRefundBadge(booking)}
+                    </div>
+
                     {booking.status === 'Confirmed' ? (
                       <button
                         className="btn btn-outline-danger w-100 py-2 fw-bold rounded-pill"
-                        onClick={() => handleCancel(booking._id)}
+                        onClick={() => handleCancel(booking)}
                         disabled={cancellingId === booking._id}
                       >
                         {cancellingId === booking._id ? (
@@ -210,6 +293,120 @@ export default function UserBookings() {
           </div>
         )}
       </div>
+
+      {cancelTarget && (
+        <div
+          onClick={() => setCancelTarget(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1100,
+            background: 'rgba(15,23,42,0.65)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: 'rgba(255,255,255,0.97)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: '20px',
+              border: '1px solid rgba(212,175,55,0.3)',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.35)',
+              padding: '32px',
+              animation: 'slideUp 0.3s ease',
+            }}
+          >
+            <div className="text-center mb-3">
+              <div
+                style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  margin: '0 auto 16px',
+                  background: 'linear-gradient(135deg, rgba(220,53,69,0.12), rgba(212,175,55,0.15))',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '2rem',
+                  border: '2px solid rgba(220,53,69,0.25)',
+                }}
+              >
+                ⚠️
+              </div>
+              <h4 className="fw-bold mb-2" style={{ color: '#0f172a' }}>
+                Cancel Reservation
+              </h4>
+              <p className="text-muted mb-1">
+                {cancelTarget.room?.type || 'Reserved Room'}
+                {cancelTarget.room?.roomNumber && ` · Room #${cancelTarget.room.roomNumber}`}
+              </p>
+              <p className="text-muted mb-0" style={{ lineHeight: 1.6 }}>
+                Are you sure you want to cancel your stay at Capipisa Bay Resort &amp; Hotel?
+                This action cannot be undone.
+              </p>
+              {isEligibleForRefund(cancelTarget) && (
+                <div
+                  className="mt-3 p-3 rounded-3"
+                  style={{
+                    background: 'rgba(212,175,55,0.08)',
+                    border: '1px solid rgba(212,175,55,0.3)',
+                  }}
+                >
+                  <p className="mb-0 small" style={{ color: '#92680f', lineHeight: 1.5 }}>
+                    💳 Since you paid via {cancelTarget.paymentMethod === 'card' ? 'Card' : 'E-Wallet'}, a refund of{' '}
+                    <strong>${Number(cancelTarget.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
+                    will be processed back to your payment method within 5-7 business days after admin approval.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="d-flex gap-2 mt-4">
+              <button
+                type="button"
+                className="btn flex-grow-1 py-2 fw-bold rounded-pill"
+                style={{
+                  background: '#f1f5f9',
+                  color: '#0f172a',
+                  border: '1px solid #e2e8f0',
+                }}
+                onClick={() => setCancelTarget(null)}
+                disabled={cancellingId === cancelTarget._id}
+              >
+                Keep Booking
+              </button>
+              <button
+                type="button"
+                className="btn flex-grow-1 py-2 fw-bold rounded-pill"
+                style={{
+                  background: 'linear-gradient(135deg, #d4af37 0%, #b8860b 100%)',
+                  color: '#0f172a',
+                  border: 'none',
+                  boxShadow: '0 4px 14px rgba(212,175,55,0.4)',
+                }}
+                onClick={confirmCancel}
+                disabled={cancellingId === cancelTarget._id}
+              >
+                {cancellingId === cancelTarget._id ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Cancelling...
+                  </>
+                ) : (
+                  'Confirm Cancellation'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

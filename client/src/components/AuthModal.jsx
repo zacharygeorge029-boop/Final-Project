@@ -22,7 +22,26 @@ const COUNTRY_CODES = [
 ];
 
 const nameRegex = /^[a-zA-Z\s'-]+$/;
-const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_EMAIL_DOMAINS = [
+  'gmail.com',
+  'yahoo.com',
+  'yahoo.com.ph',
+  'outlook.com',
+  'hotmail.com',
+  'icloud.com',
+  'aol.com',
+  'capipisabay.com',
+  'capipisabay.ph',
+  'capipisabayresort.com',
+];
+const allowedDomainSuffixes = ['.edu', '.edu.ph'];
+
+const isAllowedEmailDomain = (domain) => {
+  const lower = domain.toLowerCase();
+  if (ALLOWED_EMAIL_DOMAINS.includes(lower)) return true;
+  return allowedDomainSuffixes.some((suffix) => lower.endsWith(suffix));
+};
 
 const HERO_IMAGES = [
   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQTkv9liNysUaIUcXrZViJvpFBlkA9TlCsH7IPmW6Lhd6lxs3knZgq2gKQ&s=10',
@@ -64,10 +83,16 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
 
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const { showToast } = useToast();
 
   const firstNameRef = useRef(null);
   const emailRef = useRef(null);
+
+  useEffect(() => {
+    setErrors({});
+    setSubmitted(false);
+  }, [mode]);
 
   useEffect(() => {
     if (mode === 'login') {
@@ -93,13 +118,17 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
 
   const emailError = (value) => {
     if (!value.trim()) return 'Email is required';
-    if (!emailRegex.test(value)) return 'Enter a valid email (e.g. name@gmail.com)';
+    if (!emailRegex.test(value)) return 'Please enter a valid email address (e.g., name@example.com)';
+    const domain = value.trim().split('@')[1];
+    if (!isAllowedEmailDomain(domain)) {
+      return 'Please enter a valid email address (e.g., Gmail, Yahoo, Outlook, or official @capipisabay.com address)';
+    }
     return '';
   };
 
   const phoneError = (value) => {
     if (!value.trim()) return 'Phone number is required';
-    if (!/^\d{7,15}$/.test(value)) return 'Enter 7-15 digits';
+    if (!/^\d{10,11}$/.test(value)) return 'Please provide a valid 10-digit or 11-digit phone number.';
     return '';
   };
 
@@ -128,7 +157,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
     return { score: 5, label: 'Strong', color: '#4ade80' };
   };
 
-  const handleBlur = (field) => {
+  const validateField = (field) => {
     let msg = '';
     if (field === 'firstName') msg = nameError(firstName);
     else if (field === 'lastName') msg = nameError(lastName);
@@ -163,6 +192,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setSubmitted(true);
     if (!validateLogin()) return;
     setSubmitting(true);
     try {
@@ -185,6 +215,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    setSubmitted(true);
     if (!validateRegister()) return;
     setSubmitting(true);
     try {
@@ -198,7 +229,6 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
       });
       showToast('Account created successfully! You can now sign in.', 'success');
       setMode('login');
-      setErrors({});
     } catch (err) {
       setErrors({ form: err.response?.data?.message || 'Registration failed' });
     } finally {
@@ -212,42 +242,21 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
 
   const switchMode = (m) => {
     setMode(m);
-    setErrors({});
   };
+
+  const showFieldError = (field) => submitted && errors[field];
 
   return (
     <div
       className="d-flex align-items-center justify-content-center"
       style={{
         minHeight: '100vh',
-        background: NAVY,
+        background: `linear-gradient(135deg, rgba(248,250,252,0.92) 0%, rgba(241,245,249,0.88) 100%), url("${HERO_IMAGES[2]}") center/cover`,
         padding: '24px 16px',
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {HERO_IMAGES.map((img, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: `url("${img}")`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: i === bgSlide ? 0.18 : 0,
-            transition: 'opacity 1.4s ease-in-out',
-          }}
-        />
-      ))}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.85) 100%)',
-        }}
-      />
-
       <div
         className="animate-slide-up"
         style={{
@@ -258,8 +267,8 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
           display: 'flex',
           borderRadius: '24px',
           overflow: 'hidden',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
-          border: `1px solid rgba(212,175,55,0.25)`,
+          boxShadow: '0 30px 80px rgba(15,23,42,0.25)',
+          border: `1px solid rgba(212,175,55,0.3)`,
         }}
       >
         {/* Side A: Resort Visual */}
@@ -267,7 +276,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
           className="d-none d-md-flex flex-column justify-content-between p-5"
           style={{
             width: '48%',
-            background: `linear-gradient(160deg, rgba(15,23,42,0.88), rgba(20,50,90,0.7)), url("${HERO_IMAGES[1]}") center/cover`,
+            background: `linear-gradient(160deg, rgba(15,23,42,0.82), rgba(20,50,90,0.65)), url("${HERO_IMAGES[1]}") center/cover`,
             color: '#fff',
             position: 'relative',
           }}
@@ -299,17 +308,16 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
         <div
           style={{
             width: '100%',
-            background: 'rgba(15,23,42,0.96)',
-            backdropFilter: 'blur(20px)',
+            background: '#ffffff',
             padding: '40px 36px',
           }}
         >
           <div
             className="d-flex p-1 mb-4"
             style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'rgba(15,23,42,0.04)',
               borderRadius: '14px',
-              border: '1px solid rgba(212,175,55,0.15)',
+              border: '1px solid rgba(212,175,55,0.2)',
             }}
           >
             <button
@@ -318,7 +326,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
               className="flex-grow-1 py-2 fw-bold rounded"
               style={{
                 background: mode === 'login' ? GOLD_GRADIENT : 'transparent',
-                color: mode === 'login' ? NAVY : 'rgba(255,255,255,0.6)',
+                color: mode === 'login' ? NAVY : 'rgba(15,23,42,0.5)',
                 border: 'none',
                 fontSize: '0.9rem',
                 transition: 'all 0.3s ease',
@@ -332,7 +340,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
               className="flex-grow-1 py-2 fw-bold rounded"
               style={{
                 background: mode === 'register' ? GOLD_GRADIENT : 'transparent',
-                color: mode === 'register' ? NAVY : 'rgba(255,255,255,0.6)',
+                color: mode === 'register' ? NAVY : 'rgba(15,23,42,0.5)',
                 border: 'none',
                 fontSize: '0.9rem',
                 transition: 'all 0.3s ease',
@@ -345,7 +353,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
           {errors.form && (
             <div
               className="mb-3 p-3 rounded text-center small"
-              style={{ background: 'rgba(220,53,69,0.12)', color: '#ff6b6b', border: '1px solid rgba(220,53,69,0.25)' }}
+              style={{ background: 'rgba(220,53,69,0.08)', color: '#b91c1c', border: '1px solid rgba(220,53,69,0.2)' }}
             >
               {errors.form}
             </div>
@@ -359,22 +367,22 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   type="email"
                   placeholder=" "
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => handleBlur('email')}
+                  onChange={(e) => { setEmail(e.target.value); if (submitted) validateField('email'); }}
                   autoComplete="email"
+                  className={showFieldError('email') ? 'luxury-input-invalid' : ''}
                 />
                 <label>Email Address</label>
               </div>
-              {errors.email && <div className="luxury-error">{errors.email}</div>}
+              {showFieldError('email') && <div className="luxury-error">{errors.email}</div>}
 
               <div className="luxury-field">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   placeholder=" "
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => handleBlur('password')}
+                  onChange={(e) => { setPassword(e.target.value); if (submitted) validateField('password'); }}
                   autoComplete="current-password"
+                  className={showFieldError('password') ? 'luxury-input-invalid' : ''}
                 />
                 <label>Password</label>
                 <button
@@ -383,12 +391,12 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   onClick={() => setShowPassword((s) => !s)}
                   tabIndex={-1}
                   title={showPassword ? 'Hide password' : 'Show password'}
-                  style={{ color: 'rgba(255,255,255,0.5)' }}
+                  style={{ color: 'rgba(15,23,42,0.4)' }}
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
               </div>
-              {errors.password && <div className="luxury-error">{errors.password}</div>}
+              {showFieldError('password') && <div className="luxury-error">{errors.password}</div>}
 
               <div className="d-flex justify-content-between align-items-center mb-4">
                 <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer', margin: 0 }}>
@@ -399,7 +407,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                       onChange={(e) => setRemember(e.target.checked)}
                     />
                   </span>
-                  <span className="small" style={{ color: 'rgba(255,255,255,0.7)' }}>Remember Me</span>
+                  <span className="small" style={{ color: 'rgba(15,23,42,0.75)' }}>Remember Me</span>
                 </label>
                 <button
                   type="button"
@@ -436,13 +444,13 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                       type="text"
                       placeholder=" "
                       value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      onBlur={() => handleBlur('firstName')}
+                      onChange={(e) => { setFirstName(e.target.value); if (submitted) validateField('firstName'); }}
                       autoComplete="given-name"
+                      className={showFieldError('firstName') ? 'luxury-input-invalid' : ''}
                     />
                     <label>First Name</label>
                   </div>
-                  {errors.firstName && <div className="luxury-error">{errors.firstName}</div>}
+                  {showFieldError('firstName') && <div className="luxury-error">{errors.firstName}</div>}
                 </div>
                 <div className="col-6">
                   <div className="luxury-field">
@@ -450,13 +458,13 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                       type="text"
                       placeholder=" "
                       value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      onBlur={() => handleBlur('lastName')}
+                      onChange={(e) => { setLastName(e.target.value); if (submitted) validateField('lastName'); }}
                       autoComplete="family-name"
+                      className={showFieldError('lastName') ? 'luxury-input-invalid' : ''}
                     />
                     <label>Last Name</label>
                   </div>
-                  {errors.lastName && <div className="luxury-error">{errors.lastName}</div>}
+                  {showFieldError('lastName') && <div className="luxury-error">{errors.lastName}</div>}
                 </div>
               </div>
 
@@ -465,17 +473,17 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   type="email"
                   placeholder=" "
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => handleBlur('email')}
+                  onChange={(e) => { setEmail(e.target.value); if (submitted) validateField('email'); }}
                   autoComplete="email"
+                  className={showFieldError('email') ? 'luxury-input-invalid' : ''}
                 />
                 <label>Email Address</label>
               </div>
-              {errors.email && <div className="luxury-error">{errors.email}</div>}
+              {showFieldError('email') && <div className="luxury-error">{errors.email}</div>}
 
               <div className="luxury-phone-group">
                 <label className="luxury-phone-label">Phone Number</label>
-                <div className="luxury-phone-row">
+                <div className={`luxury-phone-row ${showFieldError('phone') ? 'luxury-phone-invalid' : ''}`}>
                   <select
                     value={countryCode}
                     onChange={(e) => setCountryCode(e.target.value)}
@@ -489,24 +497,23 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                     type="tel"
                     placeholder="917 123 4567"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                    onBlur={() => handleBlur('phone')}
-                    maxLength={15}
+                    onChange={(e) => { setPhone(e.target.value.replace(/\D/g, '')); if (submitted) validateField('phone'); }}
+                    maxLength={11}
                     autoComplete="tel-national"
                   />
                 </div>
-                <div className="luxury-phone-hint">Enter digits only (7-15 digits)</div>
+                <div className="luxury-phone-hint">Enter 10-11 digits (e.g., 9171234567)</div>
               </div>
-              {errors.phone && <div className="luxury-error">{errors.phone}</div>}
+              {showFieldError('phone') && <div className="luxury-error">{errors.phone}</div>}
 
               <div className="luxury-field">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   placeholder=" "
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => handleBlur('password')}
+                  onChange={(e) => { setPassword(e.target.value); if (submitted) { validateField('password'); if (confirmPassword) validateField('confirmPassword'); } }}
                   autoComplete="new-password"
+                  className={showFieldError('password') ? 'luxury-input-invalid' : ''}
                 />
                 <label>Password</label>
                 <button
@@ -515,12 +522,12 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   onClick={() => setShowPassword((s) => !s)}
                   tabIndex={-1}
                   title={showPassword ? 'Hide password' : 'Show password'}
-                  style={{ color: 'rgba(255,255,255,0.5)' }}
+                  style={{ color: 'rgba(15,23,42,0.4)' }}
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
               </div>
-              {errors.password && <div className="luxury-error">{errors.password}</div>}
+              {showFieldError('password') && <div className="luxury-error">{errors.password}</div>}
               {password && (
                 <div className="luxury-strength">
                   <div className="luxury-strength-bar">
@@ -531,7 +538,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                         style={{
                           background: i <= getPasswordStrength(password).score
                             ? getPasswordStrength(password).color
-                            : 'rgba(255,255,255,0.1)',
+                            : 'rgba(15,23,42,0.1)',
                         }}
                       />
                     ))}
@@ -547,12 +554,12 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder=" "
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  onBlur={() => handleBlur('confirmPassword')}
+                  onChange={(e) => { setConfirmPassword(e.target.value); if (submitted) validateField('confirmPassword'); }}
                   onCopy={(e) => e.preventDefault()}
                   onPaste={(e) => e.preventDefault()}
                   onCut={(e) => e.preventDefault()}
                   autoComplete="new-password"
+                  className={showFieldError('confirmPassword') ? 'luxury-input-invalid' : ''}
                 />
                 <label>Confirm Password</label>
                 <button
@@ -561,12 +568,12 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
                   onClick={() => setShowConfirmPassword((s) => !s)}
                   tabIndex={-1}
                   title={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  style={{ color: 'rgba(255,255,255,0.5)' }}
+                  style={{ color: 'rgba(15,23,42,0.4)' }}
                 >
                   {showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
               </div>
-              {errors.confirmPassword && <div className="luxury-error">{errors.confirmPassword}</div>}
+              {showFieldError('confirmPassword') && <div className="luxury-error">{errors.confirmPassword}</div>}
               {confirmPassword && password === confirmPassword && !errors.confirmPassword && (
                 <div className="luxury-match">✓ Passwords match</div>
               )}
@@ -588,7 +595,7 @@ export default function AuthModal({ defaultMode = 'login', onLoginSuccess }) {
             </form>
           )}
 
-          <div className="text-center mt-4 small" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          <div className="text-center mt-4 small" style={{ color: 'rgba(15,23,42,0.55)' }}>
             {mode === 'login' ? (
               <>
                 Don't have an account?{' '}

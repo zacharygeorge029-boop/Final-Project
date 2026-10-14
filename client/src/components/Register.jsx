@@ -77,8 +77,8 @@ export default function Register({ onSwitchToLogin }) {
 
     if (!phone.trim()) {
       newErrors.phone = 'Phone number is required';
-    } else if (!/^\d{7,15}$/.test(phone)) {
-      newErrors.phone = 'Phone number must be 7-15 digits';
+    } else if (!/^\d{10,11}$/.test(phone)) {
+      newErrors.phone = 'Please provide a valid 10-digit or 11-digit phone number.';
     }
 
     if (!password) {
@@ -182,11 +182,11 @@ export default function Register({ onSwitchToLogin }) {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                 placeholder="9171234567"
-                maxLength={15}
+                maxLength={11}
               />
               {errors.phone && <div className="invalid-feedback">{errors.phone}</div>}
             </div>
-            <div className="form-text text-muted">Enter digits only (7-15 digits)</div>
+            <div className="form-text text-muted">Enter 10-11 digits (e.g., 9171234567)</div>
           </div>
 
           <div className="mb-3">
